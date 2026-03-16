@@ -315,6 +315,24 @@ class ArrayColumnTypeTests : R2dbcDatabaseTestsBase() {
     }
 
     @Test
+    fun testArrayColumnWithTextColumnType() {
+        val tester = object : Table("text_array_test") {
+            val textArray = array("text_col", TextColumnType())
+        }
+
+        withTables(excludeSettings = TestDB.ALL - TestDB.ALL_POSTGRES, tester) {
+            val textInput = listOf("foo", "bar", "baz")
+
+            tester.insert {
+                it[textArray] = textInput
+            }
+
+            val result = tester.selectAll().single()
+            assertContentEquals(textInput, result[tester.textArray])
+        }
+    }
+
+    @Test
     fun testArrayColumnWithVarCharAndCharColumnTypes() {
         val tester = object : Table("varchar_char_array_test") {
             val varcharArray = array("varchar_col", VarCharColumnType(36))

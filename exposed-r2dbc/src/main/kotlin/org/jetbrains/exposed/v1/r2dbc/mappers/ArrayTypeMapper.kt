@@ -114,47 +114,30 @@ class ArrayTypeMapper : TypeMapper {
             is FloatColumnType -> (mappedList as List<Float>).toTypedArray()
             is DoubleColumnType -> (mappedList as List<Double>).toTypedArray()
             is BinaryColumnType -> (mappedList as List<ByteArray>).toTypedArray()
-            is StringColumnType -> (mappedList as List<String>).toTypedArray()
+            is TextColumnType -> (mappedList as List<String>).toTypedArray() // explicit; also matched by StringColumnType below
+            is StringColumnType -> (mappedList as List<String>).toTypedArray() // catches VarCharColumnType, CharColumnType, etc.
             is DecimalColumnType -> (mappedList as List<java.math.BigDecimal>).toTypedArray()
             is UuidColumnType -> (mappedList as List<kotlin.uuid.Uuid>).toTypedArray()
             is UUIDColumnType -> (mappedList as List<java.util.UUID>).toTypedArray()
-            is IDateColumnType -> {
-                // For date/time types, we need to handle them specially
-                // The hasTimePart property tells us whether it's a DATE or DATETIME column
-                val hasTimePart = (columnType.delegate as IDateColumnType).hasTimePart
-
-                // For PostgreSQL, we need to ensure the strings are in the correct format
-                // for PostgreSQL date arrays
-                val stringList = mappedList.map { value ->
-                    if (value == null) return@map null
-
-                    // Use ISO format for dates and datetimes
-                    if (hasTimePart) {
-                        // For DATETIME columns, use ISO datetime format
-                        // PostgreSQL expects timestamps in the format 'YYYY-MM-DD HH:MM:SS'
-                        val dateStr = value.toString()
-                        if (dateStr.contains('T')) {
-                            // Convert ISO 8601 format to PostgreSQL timestamp format
-                            dateStr.replace('T', ' ').substringBefore('.')
-                        } else {
-                            dateStr
-                        }
-                    } else {
-                        // For DATE columns, use ISO date format (without time part)
-                        // PostgreSQL expects dates in the format 'YYYY-MM-DD'
-                        val dateStr = value.toString()
-                        if (dateStr.contains('T')) {
-                            dateStr.substringBefore('T')
-                        } else {
-                            dateStr
-                        }
-                    }
-                }
-
-                stringList.toTypedArray()
-            }
+            is IDateColumnType -> mapPgDateArray(columnType.delegate as IDateColumnType, mappedList)
             else -> error("Unsupported array type: $columnType:${columnType::class}")
         }
+    }
+
+    private fun mapPgDateArray(dateColumnType: IDateColumnType, mappedList: List<Any?>): Array<Any?> {
+        val hasTimePart = dateColumnType.hasTimePart
+        val stringList = mappedList.map { value ->
+            if (value == null) return@map null
+            val dateStr = value.toString()
+            if (hasTimePart) {
+                // PostgreSQL expects timestamps in the format 'YYYY-MM-DD HH:MM:SS'
+                if (dateStr.contains('T')) dateStr.replace('T', ' ').substringBefore('.') else dateStr
+            } else {
+                // PostgreSQL expects dates in the format 'YYYY-MM-DD'
+                if (dateStr.contains('T')) dateStr.substringBefore('T') else dateStr
+            }
+        }
+        return stringList.toTypedArray()
     }
 }
 
@@ -218,7 +201,8 @@ private fun ArrayColumnType<*, *>.arrayDeclaration(): Class<out Array<out Any>> 
     is BasicBinaryColumnType, is BlobColumnType -> Array<ByteArray>::class.java
     is UuidColumnType -> Array<kotlin.uuid.Uuid>::class.java
     is UUIDColumnType -> Array<java.util.UUID>::class.java
-    is StringColumnType -> Array<String>::class.java
+    is TextColumnType -> Array<String>::class.java // explicit; also matched by StringColumnType below
+    is StringColumnType -> Array<String>::class.java // catches VarCharColumnType, CharColumnType, etc.
     is CharacterColumnType -> Array<Char>::class.java
     is BooleanColumnType -> Array<Boolean>::class.java
     is IDateColumnType -> {
